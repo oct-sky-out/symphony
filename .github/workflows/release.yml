@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build escript and publish release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: elixir
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up mise tools
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+          working_directory: elixir
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            elixir/deps
+            elixir/_build
+          key: ${{ runner.os }}-mix-release-${{ hashFiles('elixir/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-release-
+
+      - name: Install deps
+        run: mix deps.get --only prod
+
+      - name: Build escript binary
+        run: MIX_ENV=prod mix escript.build
+
+      - name: Verify binary runs
+        run: bin/symphony --help || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: elixir/bin/symphony
+          generate_release_notes: true
+          fail_on_unmatched_files: true

@@ -1,0 +1,47 @@
+name: Security audit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Run daily at 08:00 UTC to catch newly-published advisories.
+    - cron: "0 8 * * *"
+
+jobs:
+  mix-audit:
+    name: Dependency vulnerability scan (mix_audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: elixir
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up mise tools
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+          cache: true
+          working_directory: elixir
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: elixir/deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('elixir/mix.lock') }}
+          restore-keys: ${{ runner.os }}-deps-
+
+      - name: Install deps
+        run: mix deps.get
+
+      - name: Install mix_audit
+        run: mix escript.install hex mix_audit --force
+
+      - name: Run dependency audit
+        run: mix_audit
+
+      - name: Check for retired packages
+        run: mix hex.audit
