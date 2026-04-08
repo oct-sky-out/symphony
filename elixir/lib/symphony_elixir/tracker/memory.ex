@@ -5,7 +5,7 @@ defmodule SymphonyElixir.Tracker.Memory do
 
   @behaviour SymphonyElixir.Tracker
 
-  alias SymphonyElixir.Linear.Issue
+  alias SymphonyElixir.Issue
 
   @spec fetch_candidate_issues() :: {:ok, [Issue.t()]} | {:error, term()}
   def fetch_candidate_issues do
@@ -45,6 +45,20 @@ defmodule SymphonyElixir.Tracker.Memory do
   def update_issue_state(issue_id, state_name) do
     send_event({:memory_tracker_state_update, issue_id, state_name})
     :ok
+  end
+
+  @spec tool_specs() :: [map()]
+  def tool_specs, do: []
+
+  @spec execute_tool(String.t(), term(), keyword()) :: map()
+  def execute_tool(tool_name, _arguments, _opts \\ []) do
+    output = Jason.encode!(%{"error" => %{"message" => "No tools available for the memory tracker: #{inspect(tool_name)}."}}, pretty: true)
+
+    %{
+      "success" => false,
+      "output" => output,
+      "contentItems" => [%{"type" => "inputText", "text" => output}]
+    }
   end
 
   defp configured_issues do

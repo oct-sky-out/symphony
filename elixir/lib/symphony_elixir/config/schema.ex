@@ -45,11 +45,27 @@ defmodule SymphonyElixir.Config.Schema do
     @primary_key false
 
     embedded_schema do
+      # Identifies which adapter to use. Built-in values: "linear", "memory".
+      # Add new values by extending SymphonyElixir.Tracker.adapter/0.
       field(:kind, :string)
+      # Base API URL for the tracker.  Defaults to Linear's GraphQL endpoint for
+      # backward compatibility; override in WORKFLOW.md for other trackers.
       field(:endpoint, :string, default: "https://api.linear.app/graphql")
+      # API key / personal access token for the tracker.
+      # Supports $ENV_VAR_NAME syntax.  Falls back to the environment variable
+      # named in :api_key_env (default: "TRACKER_API_KEY", or "LINEAR_API_KEY"
+      # when kind == "linear").
       field(:api_key, :string)
+      # Name of the environment variable used as the api_key fallback.
+      # Override this when your tracker uses a different env var convention.
+      field(:api_key_env, :string)
+      # Project / workspace / board identifier in the tracker.
       field(:project_slug, :string)
+      # Filter issues to those assigned to this user (ID or username).
+      # Supports $ENV_VAR_NAME syntax.  Falls back to :assignee_env.
       field(:assignee, :string)
+      # Name of the environment variable used as the assignee fallback.
+      field(:assignee_env, :string)
       field(:active_states, {:array, :string}, default: ["Todo", "In Progress"])
       field(:terminal_states, {:array, :string}, default: ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"])
     end
@@ -59,7 +75,7 @@ defmodule SymphonyElixir.Config.Schema do
       schema
       |> cast(
         attrs,
-        [:kind, :endpoint, :api_key, :project_slug, :assignee, :active_states, :terminal_states],
+        [:kind, :endpoint, :api_key, :api_key_env, :project_slug, :assignee, :assignee_env, :active_states, :terminal_states],
         empty_values: []
       )
     end
@@ -368,8 +384,8 @@ defmodule SymphonyElixir.Config.Schema do
   defp finalize_settings(settings) do
     tracker = %{
       settings.tracker
-      | api_key: resolve_secret_setting(settings.tracker.api_key, System.get_env("LINEAR_API_KEY")),
-        assignee: resolve_secret_setting(settings.tracker.assignee, System.get_env("LINEAR_ASSIGNEE"))
+      | api_key: resolve_secret_setting(settings.tracker.api_key, tracker_api_key_fallback(settings.tracker)),
+        assignee: resolve_secret_setting(settings.tracker.assignee, tracker_assignee_fallback(settings.tracker))
     }
 
     workspace = %{
@@ -384,6 +400,32 @@ defmodule SymphonyElixir.Config.Schema do
     }
 
     %{settings | tracker: tracker, workspace: workspace, codex: codex}
+  end
+
+  # Returns the env var value to use as fallback for tracker.api_key.
+  # Priority: explicit api_key_env field > kind-specific default > generic default.
+  defp tracker_api_key_fallback(tracker) do
+    env_name =
+      tracker.api_key_env ||
+        case tracker.kind do
+          "linear" -> "LINEAR_API_KEY"
+          _ -> "TRACKER_API_KEY"
+        end
+
+    System.get_env(env_name)
+  end
+
+  # Returns the env var value to use as fallback for tracker.assignee.
+  # Priority: explicit assignee_env field > kind-specific default > generic default.
+  defp tracker_assignee_fallback(tracker) do
+    env_name =
+      tracker.assignee_env ||
+        case tracker.kind do
+          "linear" -> "LINEAR_ASSIGNEE"
+          _ -> "TRACKER_ASSIGNEE"
+        end
+
+    System.get_env(env_name)
   end
 
   defp normalize_keys(value) when is_map(value) do
