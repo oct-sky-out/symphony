@@ -46,12 +46,21 @@ defmodule SymphonyElixir.Config.Schema do
 
     embedded_schema do
       field(:kind, :string)
-      field(:endpoint, :string, default: "https://api.linear.app/graphql")
+      # Generic HTTP endpoint override. Linear defaults to https://api.linear.app/graphql
+      # when this is nil; other adapters ignore it or use extra_config.base_url instead.
+      field(:endpoint, :string)
       field(:api_key, :string)
+      # Linear-specific: project slug ID (kept at top level for backward compatibility).
       field(:project_slug, :string)
       field(:assignee, :string)
       field(:active_states, {:array, :string}, default: ["Todo", "In Progress"])
       field(:terminal_states, {:array, :string}, default: ["Closed", "Cancelled", "Canceled", "Duplicate", "Done"])
+      # Adapter-specific configuration. Keys and values depend on the tracker kind.
+      # Examples:
+      #   github: {owner: "myorg", repo: "myrepo"}
+      #   jira:   {base_url: "https://myco.atlassian.net", project_key: "PROJ", email: "..."}
+      #   custom: {module: "MyApp.MyAdapter", ...}
+      field(:extra_config, :map, default: %{})
     end
 
     @spec changeset(%__MODULE__{}, map()) :: Ecto.Changeset.t()
@@ -59,7 +68,7 @@ defmodule SymphonyElixir.Config.Schema do
       schema
       |> cast(
         attrs,
-        [:kind, :endpoint, :api_key, :project_slug, :assignee, :active_states, :terminal_states],
+        [:kind, :endpoint, :api_key, :project_slug, :assignee, :active_states, :terminal_states, :extra_config],
         empty_values: []
       )
     end
@@ -366,10 +375,12 @@ defmodule SymphonyElixir.Config.Schema do
   end
 
   defp finalize_settings(settings) do
+    {api_key_env, assignee_env} = tracker_env_vars(settings.tracker.kind)
+
     tracker = %{
       settings.tracker
-      | api_key: resolve_secret_setting(settings.tracker.api_key, System.get_env("LINEAR_API_KEY")),
-        assignee: resolve_secret_setting(settings.tracker.assignee, System.get_env("LINEAR_ASSIGNEE"))
+      | api_key: resolve_secret_setting(settings.tracker.api_key, System.get_env(api_key_env)),
+        assignee: resolve_secret_setting(settings.tracker.assignee, assignee_env && System.get_env(assignee_env))
     }
 
     workspace = %{
@@ -385,6 +396,11 @@ defmodule SymphonyElixir.Config.Schema do
 
     %{settings | tracker: tracker, workspace: workspace, codex: codex}
   end
+
+  # Returns {api_key_env_var, assignee_env_var | nil} for each tracker kind.
+  defp tracker_env_vars("linear"), do: {"LINEAR_API_KEY", "LINEAR_ASSIGNEE"}
+  defp tracker_env_vars("github"), do: {"GITHUB_TOKEN", nil}
+  defp tracker_env_vars(_), do: {"TRACKER_API_KEY", nil}
 
   defp normalize_keys(value) when is_map(value) do
     Enum.reduce(value, %{}, fn {key, raw_value}, normalized ->

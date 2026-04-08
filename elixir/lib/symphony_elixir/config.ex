@@ -114,12 +114,15 @@ defmodule SymphonyElixir.Config do
     end
   end
 
+  @known_tracker_kinds ~w[linear github memory]
+
   defp validate_semantics(settings) do
     cond do
       is_nil(settings.tracker.kind) ->
         {:error, :missing_tracker_kind}
 
-      settings.tracker.kind not in ["linear", "memory"] ->
+      settings.tracker.kind not in @known_tracker_kinds and
+          not custom_adapter_module_set?(settings.tracker) ->
         {:error, {:unsupported_tracker_kind, settings.tracker.kind}}
 
       settings.tracker.kind == "linear" and not is_binary(settings.tracker.api_key) ->
@@ -128,10 +131,24 @@ defmodule SymphonyElixir.Config do
       settings.tracker.kind == "linear" and not is_binary(settings.tracker.project_slug) ->
         {:error, :missing_linear_project_slug}
 
+      settings.tracker.kind == "github" and not is_binary(settings.tracker.api_key) ->
+        {:error, :missing_github_api_token}
+
+      settings.tracker.kind == "github" and
+          not is_binary(settings.tracker.extra_config["owner"]) ->
+        {:error, :missing_github_owner}
+
+      settings.tracker.kind == "github" and
+          not is_binary(settings.tracker.extra_config["repo"]) ->
+        {:error, :missing_github_repo}
+
       true ->
         :ok
     end
   end
+
+  defp custom_adapter_module_set?(%{extra_config: %{"module" => m}}) when is_binary(m), do: true
+  defp custom_adapter_module_set?(_), do: false
 
   defp format_config_error(reason) do
     case reason do

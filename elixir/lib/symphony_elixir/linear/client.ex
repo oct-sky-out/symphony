@@ -4,7 +4,7 @@ defmodule SymphonyElixir.Linear.Client do
   """
 
   require Logger
-  alias SymphonyElixir.{Config, Linear.Issue}
+  alias SymphonyElixir.{Config, Tracker.Issue}
 
   @issue_page_size 50
   @max_error_body_log_bytes 1_000
@@ -394,8 +394,12 @@ defmodule SymphonyElixir.Linear.Client do
     end
   end
 
+  @default_endpoint "https://api.linear.app/graphql"
+
   defp post_graphql_request(payload, headers) do
-    Req.post(Config.settings!().tracker.endpoint,
+    endpoint = Config.settings!().tracker.endpoint || @default_endpoint
+
+    Req.post(endpoint,
       headers: headers,
       json: payload,
       connect_options: [timeout: 30_000]
